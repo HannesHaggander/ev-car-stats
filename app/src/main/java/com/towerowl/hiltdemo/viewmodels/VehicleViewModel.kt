@@ -18,19 +18,48 @@ class VehicleViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _popularVehicles: MutableLiveData<List<Vehicle>> = MutableLiveData()
-    val popularVehicles: LiveData<List<Vehicle>> get() = _popularVehicles
+    private val _filteredPopularVehicles: MutableLiveData<List<Vehicle>> = MutableLiveData()
+    val filteredPopularVehicles: LiveData<List<Vehicle>> get() = _filteredPopularVehicles
+    private val _searchQuery: MutableLiveData<String> = MutableLiveData()
+    val searchQuery: LiveData<String> get() = _searchQuery
+
     private var fetchPopularVehiclesJob: Job? = null
         set(value) {
             field?.cancel()
             field = value
         }
 
-    fun fetchPopularVehicles() {
+    init {
+        fetchPopularVehicles()
+        _popularVehicles.observeForever { popularVehicles ->
+            _filteredPopularVehicles.postValue(
+                searchQuery.value.let { query ->
+                    if (query.isNullOrEmpty()) popularVehicles
+                    else popularVehicles.filter { it.name.contains(query, ignoreCase = true) }
+                }
+            )
+        }
+
+        _searchQuery.observeForever { query ->
+            _filteredPopularVehicles.postValue(
+                if (query.isNullOrEmpty()) _popularVehicles.value
+                else _popularVehicles.value.orEmpty()
+                    .filter { it.name.contains(query, ignoreCase = true) }
+            )
+        }
+    }
+
+    private fun fetchPopularVehicles() {
         viewModelScope.launch(IO) {
             vehicleRepository
                 .getPopularVehicles()
                 .let { popularVehicles -> _popularVehicles.postValue(popularVehicles) }
         }.also { fetchPopularVehiclesJob = it }
+    }
+
+    fun updateSearchQuery(query: String) {
+        if (_searchQuery.value == query) return
+        _searchQuery.postValue(query)
     }
 
 }
